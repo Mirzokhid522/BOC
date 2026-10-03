@@ -20,30 +20,40 @@
             background-color: var(--notion-bg);
             color: var(--notion-text);
             margin: 0;
-            padding: 24px 20px;
+            padding: 30px 20px;
         }
 
         .header-container {
-            max-width: 1000px;
+            max-width: 1280px;
             margin: 0 auto 20px auto;
             border-bottom: 1px solid var(--notion-border);
             padding-bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            gap: 10px;
         }
 
         h1 {
-            font-size: 22px;
+            font-size: 24px;
             font-weight: 600;
-            margin: 0 0 4px 0;
-        }
-
-        .subtitle {
-            color: var(--notion-text-muted);
-            font-size: 12px;
             margin: 0;
         }
 
+        .release-badges {
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--notion-text-muted);
+        }
+
+        .release-badges span b {
+            color: #f3f3f3;
+        }
+
         .dashboard-grid {
-            max-width: 1000px;
+            max-width: 1280px;
             margin: 0 auto;
         }
 
@@ -51,34 +61,27 @@
             background-color: var(--notion-card);
             border: 1px solid var(--notion-border);
             border-radius: 8px;
-            padding: 16px 20px 12px 20px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            padding: 24px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
         }
 
         .card-title {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 600;
-            margin: 0 0 2px 0;
+            margin: 0 0 4px 0;
             color: #f3f3f3;
         }
 
         .card-desc {
             color: var(--notion-text-muted);
-            font-size: 11px;
-            margin: 0 0 12px 0;
+            font-size: 12px;
+            margin: 0 0 16px 0;
         }
 
         .chart-container {
             position: relative;
-            height: 320px;
+            height: 560px; /* Enlarged chart height */
             width: 100%;
-        }
-
-        .loading {
-            text-align: center;
-            color: var(--notion-text-muted);
-            padding: 40px;
-            font-size: 13px;
         }
     </style>
 </head>
@@ -86,7 +89,10 @@
 
     <div class="header-container">
         <h1>Bank of Canada Policy Rates & Forecast</h1>
-        <p class="subtitle">Valet API: Bank Rate (V39078) & Target for the Overnight Rate (V39079)</p>
+        <div class="release-badges">
+            <span>Last Release Date: <b id="lastRelease">Loading...</b></span>
+            <span>Upcoming Release Date: <b id="upcomingRelease">Loading...</b></span>
+        </div>
     </div>
 
     <div class="dashboard-grid">
@@ -112,22 +118,43 @@
 
                 const meta = result.metadata;
                 document.getElementById('cardDesc').innerText = 
-                    `Latest Overnight Rate: ${meta.latest_overnight_rate}% | Bank Rate: ${meta.latest_bank_rate}% (As of ${meta.latest_date})`;
+                    `Latest Overnight Rate: ${meta.latest_overnight_rate}% | Bank Rate: ${meta.latest_bank_rate}%`;
+                
+                document.getElementById('lastRelease').innerText = meta.latest_date;
+                document.getElementById('upcomingRelease').innerText = meta.upcoming_release;
 
-                // Combine historical records with forecast projection points
                 const historicalData = result.data.filter(row => row.overnight_rate !== null || row.bank_rate !== null);
                 const forecastData = result.forecast || [];
-
-                // Extract all labels and map datasets
                 const allRows = [...historicalData, ...forecastData];
+                
                 const labels = allRows.map(row => row.date);
-
                 const overnightValues = allRows.map(row => row.overnight_rate);
                 const bankRateValues = allRows.map(row => row.bank_rate);
-
-                // Split historical vs forecast indices for dashed styling
                 const histLength = historicalData.length;
-                
+
+                // Plugin to render value text on top of final series data points
+                const valueLabelPlugin = {
+                    id: 'valueLabelPlugin',
+                    afterDatasetsDraw(chart) {
+                        const { ctx } = chart;
+                        ctx.save();
+                        ctx.font = 'bold 11px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+
+                        const meta = chart.getDatasetMeta(1);
+                        if (meta && meta.data && meta.data.length > 0) {
+                            const lastPoint = meta.data[meta.data.length - 1];
+                            const lastVal = overnightValues[overnightValues.length - 1];
+                            if (lastPoint && lastVal !== null) {
+                                ctx.fillStyle = '#2ecc71';
+                                ctx.fillText(lastVal.toFixed(2) + '%', lastPoint.x, lastPoint.y - 8);
+                            }
+                        }
+                        ctx.restore();
+                    }
+                };
+
                 const ctx = document.getElementById('ratesChart').getContext('2d');
                 new Chart(ctx, {
                     type: 'line',
@@ -148,9 +175,10 @@
                                 data: overnightValues,
                                 borderColor: '#2ecc71',
                                 backgroundColor: 'rgba(46, 204, 113, 0.05)',
-                                borderWidth: 2,
+                                borderWidth: 2.5,
                                 fill: true,
                                 pointRadius: 0,
+                                pointHoverRadius: 6,
                                 tension: 0.1
                             },
                             {
@@ -159,7 +187,7 @@
                                 borderColor: '#e67e22',
                                 borderDash: [5, 5],
                                 borderWidth: 2,
-                                pointRadius: 2,
+                                pointRadius: 3,
                                 pointBackgroundColor: '#e67e22',
                                 tension: 0.1
                             }
@@ -170,13 +198,13 @@
                         maintainAspectRatio: false,
                         plugins: {
                             legend: {
-                                labels: { color: '#ffffff', font: { size: 11 } }
+                                labels: { color: '#ffffff', font: { size: 12 } }
                             },
                             tooltip: {
                                 backgroundColor: 'rgba(24, 24, 24, 0.95)',
-                                titleFont: { size: 11 },
-                                bodyFont: { size: 12, weight: '600' },
-                                padding: 8,
+                                titleFont: { size: 12 },
+                                bodyFont: { size: 13, weight: '600' },
+                                padding: 10,
                                 borderColor: 'rgba(255, 255, 255, 0.15)',
                                 borderWidth: 1
                             }
@@ -184,14 +212,15 @@
                         scales: {
                             x: {
                                 grid: { display: false },
-                                ticks: { color: '#8b8a87', font: { size: 10 }, maxTicksLimit: 12 }
+                                ticks: { color: '#8b8a87', font: { size: 11 }, maxTicksLimit: 14 }
                             },
                             y: {
                                 grid: { color: 'rgba(255, 255, 255, 0.03)' },
-                                ticks: { color: '#8b8a87', font: { size: 10 } }
+                                ticks: { color: '#8b8a87', font: { size: 11 } }
                             }
                         }
-                    }
+                    },
+                    plugins: [valueLabelPlugin]
                 });
 
             } catch (err) {

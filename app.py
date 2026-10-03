@@ -1,19 +1,34 @@
 from flask import Flask, jsonify, render_template
 import requests
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# Bank of Canada Valet API endpoint for Bank Rate (V39078) and Target for the Overnight Rate (V39079)
 BOC_RATES_URL = "https://www.bankofcanada.ca/valet/observations/V39078,V39079/json"
+
+# Fixed Bank of Canada 2026 Scheduled Announcement Dates
+BOC_2026_SCHEDULE = [
+    "2026-01-28", "2026-03-18", "2026-04-29", "2026-06-10",
+    "2026-07-15", "2026-09-02", "2026-10-28", "2026-12-09"
+]
+
+def get_upcoming_release(latest_date_str):
+    try:
+        latest_dt = datetime.strptime(latest_date_str, "%Y-%m-%d")
+        for date_str in BOC_2026_SCHEDULE:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            if dt > latest_dt:
+                return dt.strftime("%B %d, %Y")
+    except Exception:
+        pass
+    return "October 28, 2026" # Fallback default
 
 @app.route("/")
 def index():
-    """Renders the frontend dashboard."""
     return render_template("index.html")
 
 @app.route("/api/interest-rates", methods=["GET"])
 def get_interest_rates():
-    """Fetches historical Bank Rate and Target for the Overnight Rate data along with forecasts."""
     try:
         response = requests.get(BOC_RATES_URL, timeout=10)
         response.raise_for_status()
@@ -32,7 +47,6 @@ def get_interest_rates():
 
         for obs in observations:
             date_val = obs.get("d")
-            
             bank_rate_obj = obs.get("V39078", {})
             overnight_obj = obs.get("V39079", {})
 
@@ -63,38 +77,23 @@ def get_interest_rates():
                 "is_forecast": False
             })
 
-        # Append analytical forecast points for upcoming scheduled meetings (simulated hold/trend projection)
+        upcoming_release = get_upcoming_release(latest_date) if latest_date else "October 28, 2026"
+
         forecast_obs = []
         if latest_overnight_rate is not None and latest_bank_rate is not None:
             forecast_obs = [
-                {
-                    "date": "2026-11-01", 
-                    "bank_rate": latest_bank_rate, 
-                    "overnight_rate": latest_overnight_rate, 
-                    "is_forecast": True
-                },
-                {
-                    "date": "2026-12-01", 
-                    "bank_rate": latest_bank_rate, 
-                    "overnight_rate": latest_overnight_rate, 
-                    "is_forecast": True
-                },
-                {
-                    "date": "2027-01-01", 
-                    "bank_rate": latest_bank_rate, 
-                    "overnight_rate": latest_overnight_rate, 
-                    "is_forecast": True
-                }
+                {"date": "2026-11-01", "bank_rate": latest_bank_rate, "overnight_rate": latest_overnight_rate, "is_forecast": True},
+                {"date": "2026-12-01", "bank_rate": latest_bank_rate, "overnight_rate": latest_overnight_rate, "is_forecast": True},
+                {"date": "2027-01-01", "bank_rate": latest_bank_rate, "overnight_rate": latest_overnight_rate, "is_forecast": True}
             ]
 
         return jsonify({
             "success": True,
             "metadata": {
-                "bank_rate_label": series_details.get("V39078", {}).get("label", "Bank Rate"),
-                "overnight_rate_label": series_details.get("V39079", {}).get("label", "Target for the Overnight Rate"),
                 "latest_bank_rate": latest_bank_rate,
                 "latest_overnight_rate": latest_overnight_rate,
-                "latest_date": latest_date
+                "latest_date": latest_date,
+                "upcoming_release": upcoming_release
             },
             "data": formatted_obs,
             "forecast": forecast_obs
