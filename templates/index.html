@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank of Canada Policy Rates Tracker</title>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --notion-bg: #191919;
+            --notion-card: #202020;
+            --notion-border: rgba(255, 255, 255, 0.08);
+            --notion-text: #ffffff;
+            --notion-text-muted: #9b9a97;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: var(--notion-bg);
+            color: var(--notion-text);
+            margin: 0;
+            padding: 24px 20px;
+        }
+
+        .header-container {
+            max-width: 1000px;
+            margin: 0 auto 20px auto;
+            border-bottom: 1px solid var(--notion-border);
+            padding-bottom: 14px;
+        }
+
+        h1 {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 0 0 4px 0;
+        }
+
+        .subtitle {
+            color: var(--notion-text-muted);
+            font-size: 12px;
+            margin: 0;
+        }
+
+        .dashboard-grid {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background-color: var(--notion-card);
+            border: 1px solid var(--notion-border);
+            border-radius: 8px;
+            padding: 16px 20px 12px 20px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin: 0 0 2px 0;
+            color: #f3f3f3;
+        }
+
+        .card-desc {
+            color: var(--notion-text-muted);
+            font-size: 11px;
+            margin: 0 0 12px 0;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 320px;
+            width: 100%;
+        }
+
+        .loading {
+            text-align: center;
+            color: var(--notion-text-muted);
+            padding: 40px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <h1>Bank of Canada Policy Rates & Forecast</h1>
+        <p class="subtitle">Valet API: Bank Rate (V39078) & Target for the Overnight Rate (V39079)</p>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="card">
+            <h3 class="card-title">Policy & Bank Rate Comparison (%)</h3>
+            <p class="card-desc" id="cardDesc">Loading current rate details...</p>
+            <div class="chart-container">
+                <canvas id="ratesChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadInterestRates() {
+            try {
+                const response = await fetch('/api/interest-rates');
+                const result = await response.json();
+
+                if (!result.success) {
+                    document.getElementById('cardDesc').innerText = `Error: ${result.error}`;
+                    return;
+                }
+
+                const meta = result.metadata;
+                document.getElementById('cardDesc').innerText = 
+                    `Latest Overnight Rate: ${meta.latest_overnight_rate}% | Bank Rate: ${meta.latest_bank_rate}% (As of ${meta.latest_date})`;
+
+                // Combine historical records with forecast projection points
+                const historicalData = result.data.filter(row => row.overnight_rate !== null || row.bank_rate !== null);
+                const forecastData = result.forecast || [];
+
+                // Extract all labels and map datasets
+                const allRows = [...historicalData, ...forecastData];
+                const labels = allRows.map(row => row.date);
+
+                const overnightValues = allRows.map(row => row.overnight_rate);
+                const bankRateValues = allRows.map(row => row.bank_rate);
+
+                // Split historical vs forecast indices for dashed styling
+                const histLength = historicalData.length;
+                
+                const ctx = document.getElementById('ratesChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Bank Rate (V39078)',
+                                data: bankRateValues,
+                                borderColor: '#3498db',
+                                backgroundColor: 'transparent',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                tension: 0.1
+                            },
+                            {
+                                label: 'Target for the Overnight Rate (V39079)',
+                                data: overnightValues,
+                                borderColor: '#2ecc71',
+                                backgroundColor: 'rgba(46, 204, 113, 0.05)',
+                                borderWidth: 2,
+                                fill: true,
+                                pointRadius: 0,
+                                tension: 0.1
+                            },
+                            {
+                                label: 'Overnight Rate Forecast',
+                                data: overnightValues.map((val, idx) => idx >= histLength - 1 ? val : null),
+                                borderColor: '#e67e22',
+                                borderDash: [5, 5],
+                                borderWidth: 2,
+                                pointRadius: 2,
+                                pointBackgroundColor: '#e67e22',
+                                tension: 0.1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#ffffff', font: { size: 11 } }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(24, 24, 24, 0.95)',
+                                titleFont: { size: 11 },
+                                bodyFont: { size: 12, weight: '600' },
+                                padding: 8,
+                                borderColor: 'rgba(255, 255, 255, 0.15)',
+                                borderWidth: 1
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: '#8b8a87', font: { size: 10 }, maxTicksLimit: 12 }
+                            },
+                            y: {
+                                grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                                ticks: { color: '#8b8a87', font: { size: 10 } }
+                            }
+                        }
+                    }
+                });
+
+            } catch (err) {
+                console.error("Failed to load interest rate data:", err);
+                document.getElementById('cardDesc').innerText = "Failed to connect to backend API.";
+            }
+        }
+
+        loadInterestRates();
+    </script>
+</body>
+</html>
